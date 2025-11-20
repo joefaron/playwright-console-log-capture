@@ -1,0 +1,115 @@
+<!--  Demo page for testing console log capture - can be hosted anywhere -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Console Demo</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .counter { background: #f0f0f0; padding: 10px; margin: 5px 0; border-radius: 5px; }
+        .error { color: red; }
+        .warning { color: orange; }
+    </style>
+</head>
+<body>
+    <h1>Console Demo - Persistence Counters</h1>
+    <button onclick="clearAll()" style="background: #ff4444; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 10px;">Clear All</button>
+    <a href="?test-param=123&another=value" style="display: inline-block; background: #4444ff; color: white; padding: 10px; border-radius: 5px; text-decoration: none; margin-bottom: 10px;">Test URL Params</a>
+    <a href="?" style="display: inline-block; background: #44aa44; color: white; padding: 10px; border-radius: 5px; text-decoration: none; margin-bottom: 10px; margin-left: 10px;">Clear Params</a>
+    <div id="counters"></div>
+    <div id="logs"></div>
+
+    <!-- Invalid JS include to test error handling -->
+    <script src="nonexistent-script.js"></script>
+
+    <script>
+        console.log('Console Demo: persistence-test - Testing cookie, localStorage, IndexedDB counters');
+
+        // Check URL parameters and log them
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.toString()) {
+            const params = {};
+            urlParams.forEach((value, key) => { params[key] = value; });
+            console.log('Console Demo: URL parameters detected:', JSON.stringify(params));
+        } else {
+            console.log('Console Demo: No URL parameters detected');
+        }
+
+        // Get current values and increment
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return '0';
+        }
+        
+        let cookieVal = parseInt(getCookie('demo_cookie_counter') || '0') + 1;
+        let localStorageVal = parseInt(localStorage.getItem('demo_localStorage_counter') || '0') + 1;
+
+        // Set new values
+        document.cookie = `demo_cookie_counter=${cookieVal}; path=/`;
+        localStorage.setItem('demo_localStorage_counter', localStorageVal);
+
+        // Display counters on page
+        document.getElementById('counters').innerHTML = `
+            <div class="counter">Cookie: ${cookieVal}</div>
+            <div class="counter">localStorage: ${localStorageVal}</div>
+            <div class="counter">IndexedDB: <span id="indexeddb-val">loading...</span></div>
+        `;
+
+        // IndexedDB - read existing value and increment
+        const request = indexedDB.open('ConsoleDemoDB', 2);
+        request.onupgradeneeded = function() {
+            const db = request.result;
+            if (!db.objectStoreNames.contains('counters')) {
+                db.createObjectStore('counters', { keyPath: 'id' });
+            }
+        };
+        request.onsuccess = function() {
+            const db = request.result;
+            const transaction = db.transaction(['counters'], 'readwrite');
+            const store = transaction.objectStore('counters');
+
+            const getRequest = store.get('demo_counter');
+            getRequest.onsuccess = function() {
+                let indexedDBVal = (getRequest.result?.value || 0) + 1;
+                store.put({ id: 'demo_counter', value: indexedDBVal });
+
+                // Update display and log
+                document.getElementById('indexeddb-val').textContent = indexedDBVal;
+                console.log(`Console Demo: counters cookie=${cookieVal} localStorage=${localStorageVal} indexeddb=${indexedDBVal}`);
+            };
+            getRequest.onerror = function() {
+                store.put({ id: 'demo_counter', value: 1 });
+                document.getElementById('indexeddb-val').textContent = '1';
+                console.log(`Console Demo: counters cookie=${cookieVal} localStorage=${localStorageVal} indexeddb=1`);
+            };
+        };
+
+        // Test console logs
+        console.log('Console Demo: basic log message');
+        console.warn('Console Demo: warning message');
+        console.error('Console Demo: error message');
+
+        // Clear all function
+        function clearAll() {
+            document.cookie = 'demo_cookie_counter=0; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+            localStorage.removeItem('demo_localStorage_counter');
+            const clearRequest = indexedDB.open('ConsoleDemoDB', 2);
+            clearRequest.onsuccess = function() {
+                const db = clearRequest.result;
+                const transaction = db.transaction(['counters'], 'readwrite');
+                const store = transaction.objectStore('counters');
+                store.delete('demo_counter');
+                location.reload();
+            };
+        }
+        // Uncaught exception test
+        setTimeout(() => {
+            undefinedVariable.someMethod();
+        }, 2000);
+    </script>
+</body>
+</html>
+
